@@ -134,6 +134,9 @@ meaning with the on-device model of macOS 27. Check the names that it gives in `
   - Do NOT run `secret touchid off`, `secret touchid grace` or `secret touchid repair`.
   - Do NOT run `secret touchid pq` unless the user asks. It seals all values again after Touch ID.
   - Do NOT change `~/.local/state/secret/touchid-ok`.
+- YOLO mode (`secret yolo status`) is the choice of the owner. When it is on, no command asks for
+  Touch ID and `secret gh` opens no dialog. The other rules stay: do NOT print a value. Do NOT
+  run `secret yolo on`: only the owner turns it on. You can run `secret yolo off`.
 - In the Secure Enclave store, Touch ID is always on. `ls`, `has`, `check`, `note` and
   `expire` do not ask for it.
   After a confirmation, the next question comes after 30 minutes without requests or after

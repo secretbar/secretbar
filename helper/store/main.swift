@@ -57,6 +57,7 @@ func usage() -> Never {
                delete NAME... | policy init [N] | policy show | policy grace N | lock | grace-status
                ping | kind | clip | status | repair | pq | pq-status
                lease REASON SECONDS NAME... | lease-status | lease-revoke
+               yolo REASON | yolo-off | yolo-status
         """, 64)
 }
 
@@ -237,8 +238,14 @@ func screenLocked() -> Bool {
 // clock, which counts the sleep of the Mac. A value goes out when its item has a new reference.
 struct Lease { var ref: Data; var value: Data; var end: TimeInterval }
 
+// YOLO (041): the owner's choice, all names with no term. One new Touch ID reads every value;
+// then reads need no question, also with a locked screen and after a sleep. A write gives the
+// new value to the agent (yolo-put). `yolo-off`, `lock`, a policy change and the end of the
+// process end it.
 final class Agent {
     var leases = [String: Lease]()
+    var yolo = false
+    var yoloValues = [String: (ref: Data, value: Data)]()
     var context: LAContext?
     var contextAt: TimeInterval = 0
     var cache = [String: (ref: Data, value: Data)]()
@@ -334,7 +341,7 @@ final class Agent {
             let now = monotonic()
             expireLeases()
             let leaseEnd: Int = leases.isEmpty ? 0 : epoch(leases.values.map { $0.end }.min() ?? now)
-            let l = leases.isEmpty ? "" : "\tlease=\(leases.count):\(leaseEnd)"
+            let l = (leases.isEmpty ? "" : "\tlease=\(leases.count):\(leaseEnd)") + (yolo ? "\tyolo=\(yoloValues.count)" : "")
             guard context != nil, now < deadline else { return ("ok\toff" + l, false) }
             return ("ok\tactive\t\(Int(deadline - now))\t\(Int(idle))\t\(Int(confirmedAt + maxSession - now))" + l, false)
         case "read" where f.count == 4:
@@ -343,11 +350,11 @@ final class Agent {
             let nodialog = f[1] == "1"
             // leased names first: same reference, not expired (R4)
             expireLeases()
-            if !leases.isEmpty {
-                do { try verifyLeases() } catch { return ("err\t1\t\(vaultMessage(error))", false) }
+            if !leases.isEmpty || yolo {
+                do { try verifyLeases(); try verifyYolo() } catch { return ("err\t1\t\(vaultMessage(error))", false) }
             }
             var missing = [String]()
-            for n in names where leases[n] == nil && !missing.contains(n) { missing.append(n) }
+            for n in names where leases[n] == nil && yoloValues[n] == nil && !missing.contains(n) { missing.append(n) }
             // a locked screen: nobody sees a Touch ID window, so names outside the lease fail at once
             if !missing.isEmpty && screenLocked() { return ("err\t6\tnot leased: " + missing.joined(separator: ", "), false) }
             if !missing.isEmpty, case .failure(let e) = authorized(reason, nodialog) { return ("err\t\(e.code)\t\(e.message)", false) }
@@ -355,6 +362,10 @@ final class Agent {
             for n in names {
                 if let l = leases[n] {
                     values.append(hex(l.value)); sources.append("l")
+                    continue
+                }
+                if let y = yoloValues[n] {
+                    values.append(hex(y.value)); sources.append("y")
                     continue
                 }
                 switch value(n, reason, nodialog) {
@@ -374,19 +385,38 @@ final class Agent {
         case "revoke":
             leases.removeAll()
             return ("ok", false)
+        case "yolo" where f.count == 3:
+            return yoloOn(nodialog: f[1] == "1", reasonHex: f[2])
+        case "yolo-off":
+            let was = yolo
+            yolo = false
+            yoloValues.removeAll()
+            if was { eventLog("yolo: off") }
+            return ("ok", false)
+        case "yolo-status":
+            guard yolo else { return ("ok\toff", false) }
+            do { try verifyYolo() } catch { return ("err\t1\t\(vaultMessage(error))", false) }
+            return ("ok\ton\t\(yoloValues.count)", false)
+        case "yolo-put" where f.count == 4:
+            // a new value from a write of this user (041); kept only for the reference in the store file
+            guard yolo else { return ("ok", false) }
+            guard let n = unhexText(f[1]), !n.hasPrefix("__secret-cli."), let ref = unhex(f[2]), let v = unhex(f[3]) else { return ("err\t64\tbad request", false) }
+            guard let item = (try? readDoc())?.0.items.first(where: { $0.n == n }), Data(item.r.utf8) == ref else { return ("ok", false) }
+            yoloValues[n] = (ref, v)
+            return ("ok", false)
         #if SECRET_TEST
         case "test-lock":
             testScreenLocked = true
             dropGrace()
             expireLeases()
-            return ("ok", leases.isEmpty)
+            return ("ok", leases.isEmpty && !yolo)
         case "test-unlock":
             testScreenLocked = false
             return ("ok", false)
         case "test-sleep":
             dropGrace()
             expireLeases()
-            return ("ok", leases.isEmpty)
+            return ("ok", leases.isEmpty && !yolo)
         #endif
         default:
             return ("err\t64\tunknown request", false)
@@ -414,6 +444,39 @@ final class Agent {
         guard !leases.isEmpty else { return }
         let refs = Dictionary((try readDoc()?.0.items ?? []).map { ($0.n, Data($0.r.utf8)) }, uniquingKeysWith: { $1 })
         leases = leases.filter { refs[$0.key] == $0.value.ref }
+    }
+
+    // A YOLO name leaves memory when its item has another reference or is gone.
+    func verifyYolo() throws {
+        guard !yoloValues.isEmpty else { return }
+        let refs = Dictionary((try readDoc()?.0.items ?? []).map { ($0.n, Data($0.r.utf8)) }, uniquingKeysWith: { $1 })
+        yoloValues = yoloValues.filter { refs[$0.key] == $0.value.ref }
+    }
+
+    // YOLO on (041): always a new Touch ID, grace does not stand in for it. All values are read now.
+    func yoloOn(nodialog: Bool, reasonHex: Substring) -> (String, Bool) {
+        guard let reason = unhexText(reasonHex) else { return ("err\t64\tbad request", false) }
+        if screenLocked() { return ("err\t6\tyolo needs Touch ID: the screen is locked", false) }
+        if nodialog { return ("err\t5\tTouch ID confirmation needed, SECRET_NO_DIALOG is set", false) }
+        let c: LAContext
+        switch confirmedContext(reason) {
+        case .failure(let e): return ("err\t\(e.code)\t\(e.message)", false)
+        case .success(let x): c = x
+        }
+        defer { c.invalidate() }
+        var fresh = [String: (ref: Data, value: Data)]()
+        do {
+            if let (d, k, _) = try readDoc() {
+                for it in d.items {
+                    valueTouch("read " + it.n)
+                    fresh[it.n] = (Data(it.r.utf8), try unseal(it.v, it.n, k.se, k.kse, c))
+                }
+            }
+        } catch { return ("err\t1\tcannot read the secrets: \(error)", false) }
+        yoloValues = fresh
+        yolo = true
+        eventLog("yolo: on, \(fresh.count) values")
+        return ("ok\t\(fresh.count)", false)
     }
 
     // A new lease (026): always a new Touch ID, grace does not stand in for it. The values are
@@ -467,7 +530,7 @@ final class Agent {
     func endGrace() {
         dropGrace()
         expireLeases()
-        if leases.isEmpty { stop() }
+        if leases.isEmpty && !yolo { stop() }
     }
 
     // End of grace: the deadline passed, the Mac slept, or the screen is locked. Without a
@@ -482,7 +545,7 @@ final class Agent {
         if (slept || screenLocked()) && context != nil { endGrace() }
         if context != nil {
             if mono >= deadline { endGrace() }
-        } else if leases.isEmpty && mono - startedAt >= idleSeconds {
+        } else if leases.isEmpty && !yolo && mono - startedAt >= idleSeconds {
             stop()
         }
     }
@@ -533,6 +596,7 @@ final class Agent {
         unlink(socketPath)  // first: new clients start a new agent
         cache.removeAll()
         leases.removeAll()
+        yoloValues.removeAll()
         context?.invalidate()
         close(listenFD)
         exit(0)
@@ -1170,6 +1234,27 @@ case "lease-status":
         if p.count == 2, let n = unhexText(p[0]) { print("\(n)\t\(p[1])") }
     }
 
+case "yolo":
+    // yolo REASON: all values into the memory of the agent after one new Touch ID (041)
+    guard args.count == 3 else { usage() }
+    let a = request(["yolo", noDialog ? "1" : "0", hex(args[2])].joined(separator: "\t"))
+    print(a.isEmpty ? "0" : String(a[0]))
+
+case "yolo-off":
+    guard let fd = connectAgent() else { exit(0) }
+    _ = writeLine(fd, "yolo-off")
+    _ = readLine(fd)
+    close(fd)
+
+case "yolo-status":
+    // "on N" or "off"; it does not start the agent and needs no Touch ID
+    guard let fd = connectAgent() else { print("off"); exit(0) }
+    defer { close(fd) }
+    guard writeLine(fd, "yolo-status"), let answer = readLine(fd) else { print("off"); exit(0) }
+    let f = answer.split(separator: "\t")
+    if f.first == "err" { fail(f.count > 2 ? String(f[2]) : "agent error", f.count > 1 ? Int32(f[1]) ?? 1 : 1) }
+    print(f.dropFirst().joined(separator: " "))
+
 case "lease-revoke":
     guard let fd = connectAgent() else { exit(0) }
     _ = writeLine(fd, "revoke")
@@ -1187,11 +1272,22 @@ case "write":
         guard !value.isEmpty else { fail("empty value: \(name)", 64) }
         records.append((name, value, comment, expiry))
     }
+    var written = [(String, String, Data)]()
     mutate { d, k in
+        written.removeAll()
         for (n, v, c, e) in records {
             d.items.removeAll { $0.n == n }
-            d.items.append(VaultItem(n: n, c: c, x: e, v: try seal(v, n, k.pub, k.kpub), r: UUID().uuidString))
+            let r = UUID().uuidString
+            d.items.append(VaultItem(n: n, c: c, x: e, v: try seal(v, n, k.pub, k.kpub), r: r))
+            written.append((n, r, v))
         }
+    }
+    // YOLO (041): a running agent gets the new values; without YOLO it ignores them
+    for (n, r, v) in written {
+        guard let fd = connectAgent() else { break }
+        _ = writeLine(fd, ["yolo-put", hex(n), hex(r), hex(v)].joined(separator: "\t"))
+        _ = readLine(fd)
+        close(fd)
     }
 
 case "attrs":

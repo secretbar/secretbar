@@ -284,6 +284,7 @@ the shell that runs `secret run` would expand it to empty too early.
 | `secret lease [--for DURATION] NAME... \| -e FILE` | Secure Enclave store: hold the named secrets for up to 24 hours (`30m`, `6h`; default 8h) after one Touch ID that names them. They stay readable while the screen is locked or the Mac sleeps; every other name fails at once with `not leased: NAME`. Meant for an agent that works while you are away |
 | `secret lease status` | the leased names and the end of each; no values, no Touch ID |
 | `secret lease --revoke` | end all leases (`secret lock` ends them too) |
+| `secret yolo on\|off\|status` | Secure Enclave store, off by default: after one Touch ID of the owner, agents read every secret and `secret gh` sends without a dialog, with no term, also with a locked screen. `yolo off` (no Touch ID), `secret lock`, a restart or a logout ends it. The mask and the hook stay |
 | `secret touchid on\|off\|status` | file keychain protected mode: only the helper reads values, after Touch ID |
 | `secret touchid grace SECONDS` | how long after a confirmation not to ask again: idle seconds in the Secure Enclave store (default 1800), seconds from the confirmation in the file keychain (default 300); `0` asks every time |
 | `secret touchid repair` | Secure Enclave store: rebuild its keychain item from the store file, one touch |
@@ -374,7 +375,7 @@ loader that replaces `secret:NAME` with the value after `source`, for example on
 | A value gets into the chat of the agent | input through the `ask` dialog, generation with `gen`, output masking (always under Claude Code; the value, its base64 and URL encoding), the hook | a value inside another encoding: `base64(user:pass)` in `Authorization: Basic`, hex, a value in parts |
 | A value shows in `ps` | values go to `security` through stdin, the backup password through a file descriptor | `set NAME VALUE` with the value as an argument |
 | The agent reads a value around the rules | the hook stops `secret get`, `security ... -w`, `cat .env`, `env` inside `run` | a command can be written so that the hook pattern does not match it |
-| A process reads secrets without the human | Secure Enclave: the key works only after `.userPresence`; the system asks Touch ID for any process with any signature; the access log | in grace the helper agent answers any process of the owner; grace is 30 idle minutes, 8 hours at most; a screen lock, sleep and `secret lock` end it; a lease (`secret lease`) is an explicit list you approved with Touch ID, up to 24 hours, and survives a screen lock and sleep: the agent can read those names while you are away |
+| A process reads secrets without the human | Secure Enclave: the key works only after `.userPresence`; the system asks Touch ID for any process with any signature; the access log | in grace the helper agent answers any process of the owner; grace is 30 idle minutes, 8 hours at most; a screen lock, sleep and `secret lock` end it; a lease (`secret lease`) is an explicit list you approved with Touch ID, up to 24 hours, and survives a screen lock and sleep: the agent can read those names while you are away; YOLO mode (`secret yolo on`) is your explicit choice to drop this question: then any process of the owner reads every secret until `yolo off`, `lock` or a restart |
 | Replaced key item of the store | the helper reads the item only silently; a changed item is an error without a dialog; `touchid repair` restores it from the file after Touch ID | a program of the owner can replace both the item and the file with its own key; `repair` with a touch accepts it |
 | Loss of the keychain or the Mac | `secret export`: AES-256-CBC, PBKDF2 600 000 iterations, sha256 inside | nobody can recover the keychain password or the backup password |
 | A value stays on the clipboard | `copy` clears the clipboard after 30 seconds | clipboard managers can keep the value in their history |
@@ -451,6 +452,14 @@ and lasts at most 24 hours from that touch. A screen lock and sleep end the grac
 lease; a secret outside it fails at once with `not leased`. `secret lease --revoke`, `secret lock`,
 the end of the term, a restart or a logout end it; a changed or deleted secret leaves the lease.
 `secret log` marks the reads from a lease with `lease=`.
+
+If you want no questions at all, turn on YOLO mode: `secret yolo on`. It asks Touch ID once
+(the Secure Enclave key cannot open without it). Then every read and every `secret gh` push goes
+through with no window and no term, also with a locked screen. New and changed secrets join
+it. `secret yolo off`, `secret lock`, a restart or a logout end it. The agent cannot turn it on:
+the hook stops `secret yolo on`. YOLO removes confirmations, not the protection of the chat:
+values stay masked and `secret get` stays blocked for the agent. `secret log` marks these reads
+with `yolo`.
 
 </details>
 

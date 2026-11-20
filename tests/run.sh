@@ -159,7 +159,9 @@ for c in 'secret get GITHUB_TOKEN' \
          'true && secret get X' \
          'sudo security find-generic-password -s X -w' \
          'SECRET_CONFIRM=yes secret gh X -R o/r' \
-         'SECRET_GH=./fake secret gh X'; do
+         'SECRET_GH=./fake secret gh X' \
+         'secret yolo on' \
+         'cd x && secret yolo on'; do
   check "hook blocks: $c" bash -c "$(declare -f hook); HOOK='$HOOK'; hook '$c'; [ \$? -eq 2 ]"
 done
 for c in 'secret run --mask X -- psql' \
@@ -174,11 +176,14 @@ for c in 'secret run --mask X -- psql' \
          'secret lease --for 6h SHOP_API_KEY SHOP_DB_PASSWORD' \
          'secret lease -e .env' \
          'secret lease status' \
-         'secret lease --revoke'; do
+         'secret lease --revoke' \
+         'secret yolo off' \
+         'secret yolo status'; do
   check "hook passes: $c" bash -c "$(declare -f hook); HOOK='$HOOK'; hook '$c'"
 done
 check "026: lease needs the secure enclave store" bash -c "out=\$('$SECRET' lease T_B 2>&1); [ \$? -eq 1 ] && [[ \$out == *'lease needs the secure enclave store'* ]]"
 check "026: lease status and --revoke need the secure enclave store" bash -c "! '$SECRET' lease status 2>/dev/null && ! '$SECRET' lease --revoke 2>/dev/null"
+check "041: yolo needs the secure enclave store" bash -c "out=\$('$SECRET' yolo status 2>&1); [ \$? -eq 1 ] && [[ \$out == *'yolo needs the secure enclave store'* ]] && ! '$SECRET' yolo on 2>/dev/null && ! '$SECRET' yolo off 2>/dev/null"
 check "hook passes input without a command" bash -c "echo '{}' | '$HOOK'"
 # --- 002: copy (the clipboard is replaced by a file)
 export SECRET_PBCOPY="cat > '$TMP/clip'" SECRET_PBPASTE="cat '$TMP/clip'"
@@ -722,6 +727,50 @@ else
   for i in 1 2 3 4 5; do sv rm V_L$i 2>/dev/null; done
   sv lock 2>/dev/null
   echo allow > "$SECRET_TEST_AUTH"
+
+  # --- 041: YOLO (one Touch ID of the owner; then no question and no term, also with a locked screen)
+  sv lock 2>/dev/null
+  check "041: yolo is off by default" bash -c "$SV; [ \"\$(sv yolo status)\" = 'yolo: off' ] && sv touchid status | grep -qx 'yolo: off'"
+  n="$(vcalls)"
+  out="$(sv yolo on 2>&1)"
+  check "041: yolo on asks Touch ID once and says what it does" bash -c "[ \$(wc -l < '$SECRET_TEST_AUTH_LOG') -eq $((n + 1)) ] && tail -1 '$SECRET_TEST_AUTH_LOG' | grep -qx 'YOLO: agents use every secret with no Touch ID until secret yolo off' && [[ '$out' == *'yolo: on, 3 secrets'* ]]"
+  check "041: status shows yolo" bash -c "$SV; [ \"\$(sv yolo status)\" = 'yolo: on (3 secrets)' ] && sv touchid status | grep -q '^yolo: on (3 secrets)'"
+  "$TV" test-lock
+  n="$(vcalls)"
+  check "041: SC-001 any name with a locked screen, no Touch ID" bash -c "$SV; [ \"\$(sv run V_B X=V_C -- sh -c 'printf \"%s %s\" \"\$V_B\" \"\$X\"')\" = 'second-value third-value' ] && [ \$(wc -l < '$SECRET_TEST_AUTH_LOG') -eq $n ]"
+  "$TV" test-sleep
+  check "041: a sleep keeps yolo" bash -c "$SV; [ \"\$(sv get V_C)\" = third-value ] && [ \$(wc -l < '$SECRET_TEST_AUTH_LOG') -eq $n ]"
+  echo yolo-new | sv set V_Y 2>/dev/null
+  echo changed-value | sv set V_B 2>/dev/null
+  check "041: a new and a changed secret are read with no Touch ID" bash -c "$SV; [ \"\$(sv run V_Y V_B -- sh -c 'printf \"%s %s\" \"\$V_Y\" \"\$V_B\"')\" = 'yolo-new changed-value' ] && [ \$(wc -l < '$SECRET_TEST_AUTH_LOG') -eq $n ]"
+  sv gen -c generated V_YG 2>/dev/null
+  check "041: gen while on" bash -c "$SV; [ \$(sv get V_YG | wc -c) -eq 33 ] && [ \$(wc -l < '$SECRET_TEST_AUTH_LOG') -eq $n ]"
+  sv mv V_YG V_YG2 2>/dev/null
+  check "041: mv while on" bash -c "$SV; [ \$(sv get V_YG2 | wc -c) -eq 33 ] && [ \$(wc -l < '$SECRET_TEST_AUTH_LOG') -eq $n ]"
+  sv rm V_Y 2>/dev/null; sv rm V_YG2 2>/dev/null
+  check "041: rm takes the name out of yolo memory" bash -c "$SV; [ \"\$(sv yolo status)\" = 'yolo: on (3 secrets)' ]"
+  rm -f "$TMP/gh-in"
+  check "041: gh sends with no dialog" bash -c "$SV; SECRET_GH='$TMP/gh' SECRET_CONFIRM=no sv gh V_C -R o/r 2>&1 | grep -q '^yolo: no dialog for V_C' && [ \"\$(cat '$TMP/gh-in')\" = third-value ]"
+  check "041: the log marks yolo reads and has yolo-on" bash -c "awk -F'\t' '\$2 == \"run\" && \$5 ~ /yolo/ { r = 1 } \$2 == \"yolo-on\" { o = 1 } END { exit !(r && o) }' '$SECRET_LOG'"
+  check "041: the log has no values" bash -c "! grep -q -e second-value -e third-value -e yolo-new '$SECRET_LOG'"
+  check "041: yolo on with a locked screen is refused" bash -c "$SV; out=\$(sv yolo on 2>&1); [ \$? -eq 6 ] && [[ \$out == *'the screen is locked'* ]] && [ \$(wc -l < '$SECRET_TEST_AUTH_LOG') -eq $n ]"
+  sv yolo off 2>"$TMP/yolo-off-err"
+  check "041: SC-002 yolo off says so and needs no Touch ID" bash -c "grep -qx 'yolo: off' '$TMP/yolo-off-err' && [ \$(wc -l < '$SECRET_TEST_AUTH_LOG') -eq $n ]"
+  check "041: SC-002 after off a locked screen gives not leased" bash -c "$SV; out=\$(sv run V_B -- true 2>&1); [ \$? -ne 0 ] && [[ \$out == *'not leased: V_B'* ]]"
+  check "041: the log has yolo-off" bash -c "awk -F'\t' '\$2 == \"yolo-off\" { f = 1 } END { exit !f }' '$SECRET_LOG'"
+  "$TV" test-unlock
+  sv yolo on >/dev/null 2>&1
+  sv lock 2>/dev/null
+  n="$(vcalls)"; sv get V_A >/dev/null
+  check "041: lock ends yolo" test "$(vcalls)" = "$((n + 1))"
+  sv lock 2>/dev/null
+  echo deny > "$SECRET_TEST_AUTH"
+  check "041: a refused Touch ID leaves yolo off" bash -c "$SV; ! sv yolo on 2>/dev/null && [ \"\$(sv yolo status)\" = 'yolo: off' ]"
+  echo allow > "$SECRET_TEST_AUTH"
+  check "041: SECRET_NO_DIALOG=1 gives no yolo" bash -c "out=\$(SECRET_NO_DIALOG=1 SECRET_KEYCHAIN='$KC5' SECRET_VAULT_HELPER='$TV' SECRET_STORE_MODE='$TMP/v-mode' '$SECRET' yolo on 2>&1); [ \$? -eq 5 ] && [[ \$out == *SECRET_NO_DIALOG* ]]"
+  check "041: a bad yolo call is refused" bash -c "$SV; ! sv yolo maybe 2>/dev/null && ! sv yolo on now 2>/dev/null"
+  echo second-value | sv set V_B 2>/dev/null
+  sv lock 2>/dev/null
 
   out="$(echo "$PW" | sv export -f --pass-stdin "$TMP/v.enc" 2>&1)"
   check "017: export" bash -c "grep -q 'exported: 3 secrets' <<< '$out'"
