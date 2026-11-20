@@ -1381,14 +1381,15 @@ case "clip":
     }
 
 case "status":
-    // One line for SecretBar (014): "ok off grace=N" or "ok active LEFT IDLE LIMIT grace=N".
-    // It does not start the agent.
+    // One line for SecretBar (014): "ok off grace=N" or "ok active LEFT IDLE LIMIT grace=N",
+    // then " lease=N:END" and " yolo=N" (041) when they exist. It does not start the agent.
     var g = "off", lease = ""
     if let fd = connectAgent() {
         if writeLine(fd, "status"), let a = readLine(fd) {
             let f = a.split(separator: "\t")
             if f.count >= 5, f[1] == "active" { g = "active \(f[2]) \(f[3]) \(f[4])" }
             if let l = f.first(where: { $0.hasPrefix("lease=") }) { lease = " " + l }
+            if let y = f.first(where: { $0.hasPrefix("yolo=") }) { lease += " " + y }
         }
         close(fd)
     }

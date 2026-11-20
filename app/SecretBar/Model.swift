@@ -56,6 +56,8 @@ struct Status: Equatable {
     var grace: Grace = .off
     var idle: Int?
     var lease: LeaseInfo?
+    // YOLO (041): the count of secrets in the memory of the agent; nil when YOLO is off
+    var yolo: Int?
 }
 
 struct CommandResult {
@@ -171,6 +173,8 @@ enum Parse {
         for t in f.dropFirst() {
             if t.hasPrefix("grace=") {
                 s.idle = Int(t.dropFirst(6))
+            } else if t.hasPrefix("yolo=") {
+                s.yolo = Int(t.dropFirst(5))
             } else if t.hasPrefix("lease=") {
                 let p = t.dropFirst(6).split(separator: ":").map(String.init)
                 if p.count == 2, let n = Int(p[0]), let e = Int(p[1]), n > 0 { s.lease = LeaseInfo(count: n, end: e) }
@@ -485,6 +489,14 @@ final class Store: ObservableObject {
         return r.ok
     }
 
+    // YOLO (041): on asks Touch ID once in the helper, off needs none. No intent for Shortcuts.
+    func setYolo(_ on: Bool) async {
+        guard !demo else { status.yolo = on ? secrets.count : nil; return }
+        await perform("YOLO", ["yolo", on ? "on" : "off"],
+                      done: on ? String(localized: "YOLO on: agents need no Touch ID") : String(localized: "YOLO off"),
+                      symbol: on ? "bolt.fill" : "lock.fill", refresh: false)
+    }
+
     // Ends all leases of the agent: `secret lease --revoke` (026). The row goes with the next status.
     func revokeLease() async {
         guard !demo else { status.lease = nil; return }
@@ -698,6 +710,9 @@ enum SelfTest {
         check("status: lease", Parse.status("ok off grace=1800 lease=2:1900000000") == Status(grace: .off, idle: 1800, lease: LeaseInfo(count: 2, end: 1900000000)))
         check("status: active and lease", Parse.status("ok active 1799 1800 28799 grace=none lease=1:1900000000") == Status(grace: .active(left: 1799, idle: 1800, limit: 28799), idle: nil, lease: LeaseInfo(count: 1, end: 1900000000)))
         check("status: no lease", Parse.status("ok off grace=1800")?.lease == nil)
+        check("status: yolo", Parse.status("ok off grace=1800 yolo=3")?.yolo == 3)
+        check("status: lease and yolo", Parse.status("ok off grace=1800 lease=1:1900000000 yolo=4") == Status(grace: .off, idle: 1800, lease: LeaseInfo(count: 1, end: 1900000000), yolo: 4))
+        check("status: no yolo", Parse.status("ok off grace=1800")?.yolo == nil)
         let access = "2026-10-07T12:00:00Z\tget\thuman\tA\t-\n2026-10-07T12:01:00Z\trun\tagent\tA B\tsh\n"
         let agent = "2026-10-07T12:00:30Z pid=5 touch id asked: use A for sh\n2026-10-07T12:00:31Z pid=5 touch id confirmed after 0.7s\n2026-10-07T12:00:32Z pid=5 preload: 3 values\n"
         let a = Parse.activity(access: access, agent: agent, limit: 10)
