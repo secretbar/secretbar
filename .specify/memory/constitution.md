@@ -1,5 +1,14 @@
 <!--
 Sync Impact Report
+- Version: 3.0.0 → 3.1.0 (MINOR: principle II, YOLO mode)
+- Added: YOLO mode, off by default. Only the owner turns it on, with one new Touch ID. Then the
+  agent reads every secret and pushes with `secret gh` without a confirmation, with no term, also
+  with a locked screen. `secret yolo off`, `secret lock`, a policy change, a restart and a logout
+  end it. Principle I stays: YOLO opens no value to the chat.
+- Reason: the owner asked for a mode where the agent does all work without a confirmation
+  (2026-11-20).
+
+Previous report:
 - Version: 2.5.0 → 3.0.0 (MAJOR: "Workflow", language and home of the project)
 - Modified: specs and the constitution are in English. The public texts and the interface of
   SecretBar and of the Safari extension are in English, with the translations ru, de, fr, es, it,
@@ -156,7 +165,7 @@ stdin of `gh secret set`.
 ### II. The person confirms input and access
 The person types a new value in a hidden field (terminal or macOS window), not in the agent's
 chat. The person unlocks the keychain and confirms Touch ID. The command does not keep the
-keychain password. The command gives no way around these steps. In the mode
+keychain password. The command gives no way around these steps, except YOLO mode below. In the mode
 `SECRET_NO_DIALOG=1`, the command fails where a person is necessary.
 
 The person confirms each push of a value to an external service (`secret gh`) in a macOS window.
@@ -183,6 +192,15 @@ of the Mac do not end the lease. These events end a lease: the end of the term,
 secret. The term counts from Touch ID on a monotonic clock (it runs during sleep). Requests do not
 extend it. With a locked screen, a read of a name outside the lease fails at once, with no window.
 Leases work only in the Secure Enclave store.
+
+YOLO mode is the explicit choice of the owner to remove the confirmations. It is off by default.
+Only the owner turns it on with `secret yolo on` and one new Touch ID; grace does not replace it,
+and the agent must not run it. In YOLO, the agent keeps all values in memory. Reads need no
+Touch ID, with no term, also with a locked screen and after a sleep. `secret gh` sends without
+its window. Steps where a person types a value or a backup password stay. Principle I stays:
+the mask and the hook work as before. These events end YOLO: `secret yolo off` (no Touch ID),
+`secret lock`, a change of the policy, a restart, a logout. YOLO works only in the Secure
+Enclave store.
 
 ### III. Only what macOS has
 The command works on `bash` 3.2 and the system tools of macOS (`security`, `osascript`, `perl`,
@@ -265,4 +283,4 @@ The constitution is above verbal agreements. Record a deviation in the `plan.md`
 the section "Complexity Tracking", with the reason. A change of the constitution is a separate
 commit with a new version.
 
-**Version**: 3.0.0 | **Ratified**: 2026-10-02 | **Last Amended**: 2026-11-14
+**Version**: 3.1.0 | **Ratified**: 2026-10-02 | **Last Amended**: 2026-11-20
