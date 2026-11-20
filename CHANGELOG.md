@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.0](https://github.com/secretbar/secretbar/compare/v1.9.0...v1.10.0) (2026-11-20)
+
+
+### Features
+
+* add yolo mode for agents ([4d0b808](https://github.com/secretbar/secretbar/commit/4d0b808edf299028b7fd29e2e64e7610ab15eaf8))
+* **app:** add a yolo switch to the menu ([315036c](https://github.com/secretbar/secretbar/commit/315036cd780f6cfd3d930478b00321a0af0859fe))
+
 ## [1.9.0](https://github.com/secretbar/secretbar/compare/v1.8.0...v1.9.0) (2026-11-14)
 
 
