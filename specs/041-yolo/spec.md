@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-20
 
-**Status**: Draft
+**Status**: Implemented 2026-11-20, tests/run.sh 591 pass
 
 **Input**: The owner asked (2026-11-20) for a YOLO mode. It is off by default. When the owner
 turns it on, the agent can do all work without a confirmation from the owner. The owner said:
