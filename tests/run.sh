@@ -735,6 +735,7 @@ else
   out="$(sv yolo on 2>&1)"
   check "041: yolo on asks Touch ID once and says what it does" bash -c "[ \$(wc -l < '$SECRET_TEST_AUTH_LOG') -eq $((n + 1)) ] && tail -1 '$SECRET_TEST_AUTH_LOG' | grep -qx 'YOLO: agents use every secret with no Touch ID until secret yolo off' && [[ '$out' == *'yolo: on, 3 secrets'* ]]"
   check "041: status shows yolo" bash -c "$SV; [ \"\$(sv yolo status)\" = 'yolo: on (3 secrets)' ] && sv touchid status | grep -q '^yolo: on (3 secrets)'"
+  check "041: the status line of the helper has yolo for SecretBar" bash -c "'$TV' status | grep -qE '^ok .* yolo=3\$'"
   "$TV" test-lock
   n="$(vcalls)"
   check "041: SC-001 any name with a locked screen, no Touch ID" bash -c "$SV; [ \"\$(sv run V_B X=V_C -- sh -c 'printf \"%s %s\" \"\$V_B\" \"\$X\"')\" = 'second-value third-value' ] && [ \$(wc -l < '$SECRET_TEST_AUTH_LOG') -eq $n ]"

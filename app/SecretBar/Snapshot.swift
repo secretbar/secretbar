@@ -29,6 +29,10 @@ enum Snapshot {
             Navigation.shared.sidebar = .settings
             render(AnyView(MainWindow().environmentObject(store)), size: CGSize(width: 1080, height: 680), dark: false, to: "\(dir)/main-settings-light.png")
         }
+        // 041: the menu with YOLO on
+        let yolo = Store(demo: true)
+        yolo.status.yolo = yolo.secrets.count
+        render(AnyView(MenuBarView().environmentObject(yolo)), size: CGSize(width: 380, height: 500), dark: dark, to: "\(dir)/menubar-yolo-\(dark ? "dark" : "light").png")
         // 015: an empty section (the search stays on top, no card) and a list of 300 secrets
         Navigation.shared.sidebar = .project("no-such-project")
         render(AnyView(MainWindow().environmentObject(store)), size: CGSize(width: 1080, height: 680), dark: dark, to: "\(dir)/main-empty-\(dark ? "dark" : "light").png")

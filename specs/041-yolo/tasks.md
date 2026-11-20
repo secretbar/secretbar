@@ -29,6 +29,14 @@
 - [x] T011 `docs/claude-md-secrets.md`: rule "Do NOT run `secret yolo on`"; what YOLO means for the agent
 - [x] T012 `README.md`, `README.ru.md`: a short YOLO section
 
+## Phase 6: SecretBar switch (User Story 4)
+
+- [x] T014 `helper/store/main.swift`: the `status` client line gets ` yolo=N` when YOLO is on
+- [x] T015 `app/SecretBar/Model.swift`: `Status.yolo`, parse `yolo=N`, self-test lines; `Store.setYolo(_:)` runs `secret yolo on` or `off`
+- [x] T016 `app/SecretBar/Views.swift`: `YoloRow` with a switch under the search field; red when on, with the count
+- [x] T017 `app/SecretBar/Localizable.xcstrings`: the new strings in en, ru, de, fr, es, it, pt-PT and pl
+- [ ] T018 `app/build.sh`: the app builds (done 2026-11-20, `--selftest` and `--snapshot` with YOLO on and off); a manual check of the switch with the real store is open
+
 ## Phase 5: Tests
 
 - [x] T013 `tests/run.sh`: block 041 — on/off/status, reads with a locked screen and after a sleep without Touch ID, `set` while on, `rm` while on, `lock` ends it, `gh` without the window, refused Touch ID, `SECRET_NO_DIALOG`, file keychain store refused, the log, the hook

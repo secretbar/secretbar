@@ -70,6 +70,20 @@ log has no new line.
 2. **Given** `SECRET_NO_DIALOG=1` or a locked screen, **When** `secret yolo on` runs, **Then** it
    fails and opens no window.
 
+### User Story 4 - A switch in the menu of SecretBar (Priority: P2)
+
+The owner asked (2026-11-20) for a switch in the interface.
+
+**Acceptance Scenarios**:
+
+<!-- STE deviation: Given/When/Then lines of the spec-kit template. -->
+1. **Given** YOLO is off, **When** the owner turns the switch on, **Then** SecretBar runs
+   `secret yolo on`, Touch ID asks once, and the row turns red with the count of secrets.
+2. **Given** YOLO is on, **When** the owner turns the switch off, **Then** SecretBar runs
+   `secret yolo off` with no Touch ID.
+3. **Given** YOLO was turned on in the terminal, **When** the menu opens, **Then** the switch is
+   on. Shortcuts and Siri get no YOLO action.
+
 ### Edge Cases
 
 - `secret yolo on` while YOLO is on: a new Touch ID, the values are read again.
@@ -90,6 +104,7 @@ log has no new line.
 - **FR-006**: `off`, `lock`, a change of the policy, a restart and a logout end YOLO.
 - **FR-007**: the log marks reads from YOLO and has `yolo-on` and `yolo-off`. No values.
 - **FR-008**: the hook stops `secret yolo on`. The rules for agents say: do not run it.
+- **FR-010**: the menu of SecretBar has a YOLO switch. `secret-vault status` gives `yolo=N`.
 - **FR-009**: the mask, the hook rules and `get`/`copy` do not change.
 
 ## Success Criteria *(mandatory)*

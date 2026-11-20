@@ -96,6 +96,35 @@ struct LeaseRow: View {
     }
 }
 
+// YOLO (041): one switch. On: one Touch ID, then agents read every secret with no question.
+struct YoloRow: View {
+    @EnvironmentObject var store: Store
+    var body: some View {
+        let on = store.status.yolo != nil
+        HStack(spacing: 8) {
+            Image(systemName: on ? "bolt.fill" : "bolt.slash").font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(on ? Color.red : Color.secondary)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("YOLO").font(.system(size: 11, weight: .semibold))
+                if let n = store.status.yolo {
+                    Text("YOLO on: \(n) secrets, no Touch ID for agents").font(.system(size: 10)).foregroundStyle(.red).lineLimit(1)
+                } else {
+                    Text("Off: each read asks for Touch ID").font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+            Toggle("YOLO", isOn: Binding(get: { on }, set: { v in Task { await store.setYolo(v) } }))
+                .labelsHidden().toggleStyle(.switch).controlSize(.mini).tint(.red)
+                .disabled(store.busy != nil || !store.storeOn)
+        }
+        .help(String(localized: "One Touch ID, then agents read every secret with no question until YOLO is off"))
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(on ? Color.red.opacity(0.12) : Color.primary.opacity(0.04)))
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+    }
+}
+
 struct ToastView: View {
     let toast: Store.Toast
     var body: some View {
@@ -160,6 +189,7 @@ struct MenuBarView: View {
             .padding(.horizontal, 12)
 
             LeaseRow()
+            YoloRow()
 
             if store.expiredCount + store.soonCount > 0 {
                 Button { Navigation.shared.sidebar = .expiring; Navigation.shared.showMain() } label: {
