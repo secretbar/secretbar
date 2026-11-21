@@ -1330,6 +1330,36 @@ else
   unset SECRET_BRIDGE_STATE SECRET_BRIDGE_PORT SECRET_BRIDGE_BIN
 fi
 
+# 042: install.sh goes on when the auth helper keeps its old build. Stub helpers in a temporary
+# root; the stub app builds fail, so nothing goes to /Applications.
+IR="$TMP/install042"
+mkdir -p "$IR/bin" "$IR/helper/store" "$IR/helper/cookies" "$IR/helper/bridge" "$IR/build" "$IR/app/extension" "$IR/stub" "$IR/home"
+cp "$ROOT/install.sh" "$IR/install.sh"
+mkdir -p "$IR/app/SecretBar/Assets.xcassets/AppIcon.appiconset" "$IR/app/SecretBar.xcodeproj" "$IR/app/extension/icons"
+touch "$IR/app/SecretBar/A.swift" "$IR/app/SecretBar.xcodeproj/project.pbxproj" "$IR/app/SecretBar/Assets.xcassets/AppIcon.appiconset/Contents.json" "$IR/app/SecretBar/Localizable.xcstrings" \
+  "$IR/app/extension/manifest.json" "$IR/app/extension/a.html" "$IR/app/extension/a.js" "$IR/app/extension/icons/a.png"
+printf '#!/bin/bash\n[ "$1" = __rehelper ] && exit "${REHELPER_RC:-1}"\nexit 0\n' > "$IR/bin/secret"
+printf '// new\n' > "$IR/helper/secret-auth.swift"
+for h in store cookies bridge; do printf '#!/bin/bash\ntouch "%s/built-%s"\n' "$IR" "$h" > "$IR/helper/$h/build.sh"; touch "$IR/helper/$h/main.swift"; done
+printf '#!/bin/bash\nexit 1\n' > "$IR/app/build.sh"
+cp "$IR/app/build.sh" "$IR/app/extension/build.sh"
+printf '#!/bin/bash\nwhile [ $# -gt 1 ]; do [ "$1" = -o ] && { shift; printf new > "$1"; }; shift; done\n' > "$IR/stub/swiftc"
+printf '#!/bin/bash\nexit 0\n' > "$IR/stub/codesign"
+chmod +x "$IR/bin/secret" "$IR"/helper/*/build.sh "$IR/app/build.sh" "$IR/app/extension/build.sh" "$IR/stub/swiftc" "$IR/stub/codesign"
+inst042() {
+  printf old > "$IR/build/secret-auth"; chmod +x "$IR/build/secret-auth"; printf 'oldsum\n' > "$IR/build/secret-auth.src-sha256"
+  rm -f "$IR"/built-*
+  HOME="$IR/home" ZSH_CUSTOM="$IR/home/zsh" PATH="$IR/stub:$PATH" REHELPER_RC="$1" "$IR/install.sh" >"$IR/out" 2>&1
+}
+inst042 1; rc=$?
+check "042: a failed rehelper: install.sh exits with 1" test "$rc" = 1
+check "042: a failed rehelper: the store helper build still runs" test -e "$IR/built-store"
+check "042: a failed rehelper: the cookies helper and the bridge builds run" test -e "$IR/built-cookies" -a -e "$IR/built-bridge"
+check "042: a failed rehelper: the old auth helper stays" bash -c "[ \"\$(cat '$IR/build/secret-auth')\" = old ] && grep -qx oldsum '$IR/build/secret-auth.src-sha256' && [ ! -e '$IR/build/secret-auth.new' ]"
+check "042: a failed rehelper: the last line is the warning" bash -c "tail -1 '$IR/out' | grep -q '^install.sh: the Touch ID helper of the file keychain kept the old build'"
+inst042 0; rc=$?
+check "042: rehelper ok: exit code 0 and the new auth helper" bash -c "[ $rc = 0 ] && [ \"\$(cat '$IR/build/secret-auth')\" = new ] && ! grep -q 'kept the old build' '$IR/out'"
+
 echo
 echo "passed: $pass, failed: $fail"
 [ "$fail" -eq 0 ]

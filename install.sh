@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 root="$(cd "$(dirname "$0")" && pwd)"
-claude_hook=0; app=0; legacy_only=0
+claude_hook=0; app=0; legacy_only=0; warn=""
 for a in "$@"; do
   case "$a" in
     --claude-hook) claude_hook=1 ;;
@@ -111,12 +111,16 @@ else
   mkdir -p "$root/build"
   if swiftc -swift-version 5 -O "$root/helper/secret-auth.swift" -o "$helper.new" 2>/dev/null \
       && codesign -f -s - -o runtime "$helper.new" 2>/dev/null; then
-    if [ -x "$helper" ]; then
-      "$root/bin/secret" __rehelper "$helper.new" || { echo "helper: kept the old build, $helper.new is not installed" >&2; exit 1; }
+    # A failed move of the items (042): keep the old build, it still reads them, and go on.
+    if [ -x "$helper" ] && ! "$root/bin/secret" __rehelper "$helper.new"; then
+      rm -f "$helper.new"
+      warn="the Touch ID helper of the file keychain kept the old build, run install.sh again to update it"
+      echo "helper: kept the old build" >&2
+    else
+      mv "$helper.new" "$helper"
+      echo "$sum" > "$helper.src-sha256"
+      echo "helper: $helper" >&2
     fi
-    mv "$helper.new" "$helper"
-    echo "$sum" > "$helper.src-sha256"
-    echo "helper: $helper" >&2
   else
     rm -f "$helper.new"
     echo "helper: build failed, Touch ID is not available" >&2
@@ -174,4 +178,9 @@ fi
 
 if [ $claude_hook -eq 1 ]; then
   "$root/hooks/install-claude.sh" "$root" "${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}" "${CLAUDE_MD:-$HOME/.claude/CLAUDE.md}"
+fi
+
+if [ -n "$warn" ]; then
+  echo "install.sh: $warn" >&2
+  exit 1
 fi
