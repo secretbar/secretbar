@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/secretbar/secretbar/compare/v1.10.0...v1.10.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **install:** go on when the auth helper keeps the old build ([c7c42fc](https://github.com/secretbar/secretbar/commit/c7c42fca69175541098cf7139c8347e4b57df13d))
+
 ## [1.10.0](https://github.com/secretbar/secretbar/compare/v1.9.0...v1.10.0) (2026-11-20)
 
 
